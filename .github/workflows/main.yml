@@ -1,0 +1,58 @@
+name: Deploy to Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      webAppName:
+        description: 'Name of the Web App'
+        required: true
+      resourceGroup:
+        description: 'Resource Group Name'
+        required: true
+      location:
+        description: 'Azure Region'
+        required: true
+        default: 'westeurope'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          
+      - name: Build
+        run: dotnet build TinyInsights.WebServer/TinyInsights.WebServer.csproj -c Release
+        
+      - name: Publish
+        run: dotnet publish TinyInsights.WebServer/TinyInsights.WebServer.csproj -c Release -o ./publish
+        
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          
+      - name: Deploy ARM Template
+        uses: azure/arm-deploy@v1
+        with:
+          resourceGroupName: ${{ github.event.inputs.resourceGroup }}
+          template: ./azuredeploy.json
+          parameters: >
+            webAppName=${{ github.event.inputs.webAppName }}
+            location=${{ github.event.inputs.location }}
+            applicationInsightsAppId=${{ secrets.APPLICATION_INSIGHTS_APP_ID }}
+            entraClientId=${{ secrets.ENTRA_CLIENT_ID }}
+            entraClientSecret=${{ secrets.ENTRA_CLIENT_SECRET }}
+            entraTenantId=${{ secrets.ENTRA_TENANT_ID }}
+            entraDomain=${{ secrets.ENTRA_DOMAIN }}
+            
+      - name: Deploy Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ github.event.inputs.webAppName }}
+          package: ./publish
